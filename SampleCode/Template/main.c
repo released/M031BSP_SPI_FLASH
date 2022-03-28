@@ -14,7 +14,6 @@
 volatile uint32_t BitFlag = 0;
 volatile uint32_t counter_tick = 0;
 
-uint8_t Buffer_Block_Rx[DRVSPIFLASH_SECTOR_SIZE] = {0};
 const uint8_t dummy_buffer[] = 
 "Dis suscipit. Consequat penatibus ridiculus vehicula potenti, adipiscing nisl cursus nulla egestas, aptent tristique pulvinar. Sociis. Per bibendum vel, auctor Orci orci tortor ornare lorem. Fames suspendisse sollicitudin donec Libero ad venenatis.\
 Purus vitae id pellentesque pharetra ullamcorper dis dis phasellus lectus, sapien rhoncus etiam tempor torquent.\
@@ -42,6 +41,15 @@ uint32_t g_address = 0;
 #define addr_01 	(0x00)
 #define addr_02 	(0x100)
 
+#if defined (TEST_SPI_PAGE)	
+uint8_t TxBuffer[SPI_FLASH_PAGE_BYTE] = {0};
+uint8_t RxBuffer[SPI_FLASH_PAGE_BYTE] = {0};
+#elif defined (TEST_SPI_SECTOR)
+uint8_t Tx4KBuffer[SPI_FLASH_SECTOR_SIZE] = {0};
+uint8_t Rx4KBuffer[SPI_FLASH_SECTOR_SIZE] = {0};
+#endif
+
+uint8_t SPI_FLASH_page_counter = 0;
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -212,25 +220,25 @@ void SPIFlash_operation(void)
 	dump_buffer(buffer , 16);
 	SpiWrite(g_address, size, (uint32_t)&buffer[0]);
 
-	SpiRead(g_address, DRVSPIFLASH_SECTOR_SIZE, (uint32_t)&Buffer_Block_Rx[0]);
+	SpiRead(g_address, DRVSPIFLASH_PAGE_SIZE, (uint32_t)&RxBuffer[0]);
 	printf("dump buffer 1 (read): \r\n");	
-	dump_buffer(Buffer_Block_Rx , 16);
+	dump_buffer(RxBuffer , 16);
 
-	reset_buffer(Buffer_Block_Rx , DRVSPIFLASH_SECTOR_SIZE);
+	reset_buffer(RxBuffer , DRVSPIFLASH_PAGE_SIZE);
 
-	size = SIZEOF(dummy_buffer) ; 
+	size = DRVSPIFLASH_PAGE_SIZE ; 
 	g_address = addr_02;
 	printf("dump buffer 2 (write) : \r\n");
 	// dump_buffer((uint8_t *) dummy_buffer , size );
 	SpiWrite(g_address, size, (uint32_t)&dummy_buffer[0]);
 
-	SpiRead(g_address, DRVSPIFLASH_SECTOR_SIZE, (uint32_t)&Buffer_Block_Rx[0]);
+	SpiRead(g_address, DRVSPIFLASH_PAGE_SIZE, (uint32_t)&RxBuffer[0]);
 	printf("dump buffer 2 (read): \r\n");	
-	// dump_buffer(Buffer_Block_Rx , size);
+	// dump_buffer(Rx4KBuffer , size);
 
-	compare_buffer(Buffer_Block_Rx ,(uint8_t *) dummy_buffer , size);
+	compare_buffer(RxBuffer ,(uint8_t *) dummy_buffer , size);
 
-	reset_buffer(Buffer_Block_Rx , DRVSPIFLASH_SECTOR_SIZE);
+	reset_buffer(RxBuffer , DRVSPIFLASH_PAGE_SIZE);
 }
 /*
 	WP : PA4 (D9)
@@ -259,48 +267,229 @@ void GPIO_Init (void)
 
 void process(void)
 {
-	static uint32_t LOG = 0;	
- 	uint32_t size = 0;	
-	if (is_flag_set(flag_process_1))
-	{
-		set_flag(flag_process_1 , DISABLE);
-		reset_buffer(Buffer_Block_Rx , 512);
+	// static uint32_t LOG = 0;	
+	static uint8_t cnt = 0;
+    uint16_t page_cnt = 0;
+    uint16_t i = 0;
 
-		size = 16 ; 
-		g_address = addr_01;		
-		SpiRead(g_address, DRVSPIFLASH_SECTOR_SIZE, (uint32_t)&Buffer_Block_Rx[0]);
-		printf("dump buffer 1 (read): \r\n");	
-		dump_buffer(Buffer_Block_Rx , 16);		
-	}
-	if (is_flag_set(flag_process_2))
+	if (is_flag_set(flag_digit_1))
 	{
-		set_flag(flag_process_2 , DISABLE);
-		reset_buffer(Buffer_Block_Rx , 512);
+		set_flag(flag_digit_1 , DISABLE);
 
-		size = SIZEOF(dummy_buffer); 
-		g_address = addr_02;
-		SpiRead(g_address, DRVSPIFLASH_SECTOR_SIZE, (uint32_t)&Buffer_Block_Rx[0]);
-		printf("dump buffer 2 (read): \r\n");	
-		dump_buffer(Buffer_Block_Rx , size);
-	}
-	if (is_flag_set(flag_process_3))
-	{
-		set_flag(flag_process_3 , DISABLE);
-		reset_buffer(Buffer_Block_Rx , 512);
-
-	}
-	if (is_flag_set(flag_process_4))
-	{
-		set_flag(flag_process_4 , DISABLE);
-		printf("erase flash start\r\n");
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("perform SpiFlash_ChipErase\r\n");
+		#endif
+		
 		SpiChipErase();	
-		printf("erase flash done\r\n");		
+
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("erase finish\r\n\r\n");
+		#endif
+	
+	}
+	if (is_flag_set(flag_digit_2))
+	{
+		set_flag(flag_digit_2 , DISABLE);
+
+		#if (_debug_log_UART_ == 1)	//debug				
+		printf("increase test data start from 0x%2X\r\n" , cnt);
+		#endif
+
+		#if defined (TEST_SPI_PAGE)
+		//reset TxBuffer
+		reset_buffer(TxBuffer,SPI_FLASH_PAGE_BYTE);
+
+		//fill in data
+		for ( i = 0; i < SPI_FLASH_PAGE_BYTE; i++)
+		{
+			TxBuffer[i] = 0x00 + i + cnt;
+		}
+
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("TxBuffer : \r\n");	
+		dump_buffer_hex(TxBuffer,SPI_FLASH_PAGE_BYTE);				
+		#endif	
+
+		#elif defined (TEST_SPI_SECTOR)
+		//reset TxBuffer
+		reset_buffer(Tx4KBuffer,SPI_FLASH_SECTOR_SIZE);
+
+		//fill in data
+		for ( i = 0; i < SPI_FLASH_SECTOR_SIZE; i++)
+		{
+			Tx4KBuffer[i] = 0x00 + i + cnt;
+		}
+
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("Tx4KBuffer : \r\n");	
+		dump_buffer_hex(Tx4KBuffer,SPI_FLASH_SECTOR_SIZE);				
+		#endif	
+
+		#endif				
+		cnt++; 
+	}
+	if (is_flag_set(flag_digit_3))
+	{
+		set_flag(flag_digit_3 , DISABLE);
+
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("SPI_FLASH_page_counter current : 0x%2X\r\n\r\n" ,SPI_FLASH_page_counter++);	
+		#endif
+	}
+	if (is_flag_set(flag_digit_4))
+	{
+		set_flag(flag_digit_4 , DISABLE);
+							
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("programming...(%d)\r\n",SPI_FLASH_page_counter);
+		#endif
+
+		#if defined (TEST_SPI_PAGE)		
+		// SpiFlash_PageWrite(SPI_FLASH_page_counter,TxBuffer,SPI_FLASH_PAGE_BYTE,DISABLE);
+		// SpiFlash_PageWrite(SPI_FLASH_page_counter,TxBuffer,SPI_FLASH_PAGE_BYTE,ENABLE);
+		SpiWrite(SPI_FLASH_page_counter*SPI_FLASH_PAGE_BYTE , SPI_FLASH_PAGE_BYTE, (uint32_t)&TxBuffer[0]);
+
+		#elif defined (TEST_SPI_SECTOR)
+		// SpiFlash_SectorWrite(SPI_FLASH_page_counter,Tx4KBuffer,SPI_FLASH_SECTOR_SIZE,DISABLE);
+		// SpiFlash_SectorWrite(SPI_FLASH_page_counter,Tx4KBuffer,SPI_FLASH_SECTOR_SIZE,ENABLE);
+		SpiWrite(SPI_FLASH_page_counter*SPI_FLASH_SECTOR_SIZE , SPI_FLASH_SECTOR_SIZE, (uint32_t)&Tx4KBuffer[0]);
+		#endif
+		
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("programming finish\r\n\r\n");
+		#endif
+	}
+	if (is_flag_set(flag_digit_5))
+	{
+		set_flag(flag_digit_5 , DISABLE);
+	
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("read page ...(%2d)\r\n",SPI_FLASH_page_counter);
+		#endif
+
+		#if defined (TEST_SPI_PAGE)	
+		//reset RxBuffer
+		reset_buffer(RxBuffer,SPI_FLASH_PAGE_BYTE);
+		
+		// SpiFlash_PageRead(SPI_FLASH_page_counter,RxBuffer,SPI_FLASH_PAGE_BYTE,DISABLE);
+		// SpiFlash_PageRead(SPI_FLASH_page_counter,RxBuffer,SPI_FLASH_PAGE_BYTE,ENABLE);
+		SpiRead(SPI_FLASH_page_counter*SPI_FLASH_PAGE_BYTE , SPI_FLASH_PAGE_BYTE, (uint32_t)&RxBuffer[0]);
+		
+		#if (_debug_log_UART_ == 1)	//debug				
+		dump_buffer_hex(RxBuffer,SPI_FLASH_PAGE_BYTE);
+		printf("read page finish\r\n\r\n");	
+		#endif
+
+		#elif defined (TEST_SPI_SECTOR)
+		//reset RxBuffer
+		reset_buffer(Rx4KBuffer,SPI_FLASH_SECTOR_SIZE);
+		
+		// SpiFlash_SectorRead(SPI_FLASH_page_counter,Rx4KBuffer,SPI_FLASH_SECTOR_SIZE,DISABLE);
+		// SpiFlash_SectorRead(SPI_FLASH_page_counter,Rx4KBuffer,SPI_FLASH_SECTOR_SIZE,ENABLE);
+		SpiRead(SPI_FLASH_page_counter*SPI_FLASH_SECTOR_SIZE , SPI_FLASH_SECTOR_SIZE, (uint32_t)&Rx4KBuffer[0]);
+				
+		#if (_debug_log_UART_ == 1)	//debug				
+		dump_buffer_hex(Rx4KBuffer,SPI_FLASH_SECTOR_SIZE);
+		printf("read page finish\r\n\r\n");	
+		#endif
+
+		#endif
+	}
+	if (is_flag_set(flag_digit_6))
+	{
+		set_flag(flag_digit_6 , DISABLE);
+
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("perform SpiFlash_ChipErase\r\n");
+		#endif
+		
+		SpiChipErase();	
+
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("erase finish\r\n\r\n");
+		#endif
+
+		#if defined (TEST_SPI_PAGE)		
+		for ( page_cnt = 0 ; page_cnt < TEST_NUMBER ; page_cnt++)
+		{
+			#if (_debug_log_UART_ == 1)	//debug
+			printf("\r\nSELF TEST ... (idx : %2d)\r\n" , page_cnt);
+			#endif
+
+			//reset RxBuffer
+			reset_buffer(RxBuffer,SPI_FLASH_PAGE_BYTE);
+
+			//reset TxBuffer
+			reset_buffer(TxBuffer,SPI_FLASH_PAGE_BYTE);
+
+			//fill in data
+			for ( i = 0; i < SPI_FLASH_PAGE_BYTE; i++)
+			{
+				TxBuffer[i] = 0x00 + i + cnt;
+			}
+
+			// printf("\r\nTxBuffer : \r\n");
+			// dump_buffer_hex(TxBuffer,SPI_FLASH_PAGE_BYTE);				
+			cnt++;
+			
+			// SpiFlash_PageWrite(page_cnt,TxBuffer,SPI_FLASH_PAGE_BYTE,DISABLE);
+			// SpiFlash_PageRead(page_cnt,RxBuffer,SPI_FLASH_PAGE_BYTE,DISABLE);
+			SpiWrite(page_cnt*SPI_FLASH_PAGE_BYTE , SPI_FLASH_PAGE_BYTE, (uint32_t)&TxBuffer[0]);
+			SpiRead(page_cnt*SPI_FLASH_PAGE_BYTE , SPI_FLASH_PAGE_BYTE, (uint32_t)&RxBuffer[0]);
+
+			// printf("\r\nRxBuffer\r\n");
+			// dump_buffer_hex(RxBuffer,SPI_FLASH_PAGE_BYTE);		
+
+			compare_buffer(TxBuffer,RxBuffer,SPI_FLASH_PAGE_BYTE);
+		}
+		#endif
+
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("SELF TEST finish\r\n\r\n");	
+		#endif	
+
+	}
+	if (is_flag_set(flag_digit_7))
+	{
+		set_flag(flag_digit_7 , DISABLE);
+
+	}
+	if (is_flag_set(flag_digit_8))
+	{
+		set_flag(flag_digit_8 , DISABLE);
+							
+		i = SpiReadMidDid();
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("SpiFlash_ReadMidDid : 0x%2X\r\n\n" , i);
+		#endif
+
+	}
+
+
+	if (is_flag_set(flag_digit_q_mark))
+	{
+		set_flag(flag_digit_q_mark , DISABLE);		
+		#if (_debug_log_UART_ == 1)	//debug
+		printf("\r\n==========================\r\n");
+		
+		printf("1: chip erase\r\n");
+		printf("2: fill in TX data\r\n");
+		printf("3: page counter\r\n");
+		printf("4: Page write\r\n");
+		printf("5: Page read\r\n");		
+		printf("6: self test , write , read , compare\r\n");	
+		// printf("7: self test , write , read , compare  , with PDMA\r\n");
+		
+		printf("8: read ID (0x90)\r\n");	
+		
+		printf("==========================\r\n\r\n");
+		#endif
 	}
 
 	if (is_flag_set(flag_timer_period))
 	{
 		set_flag(flag_timer_period , DISABLE);
-		printf("flag_timer_period : %4d\r\n",LOG++);
+		// printf("flag_timer_period : %4d\r\n",LOG++);
 		PB14 ^= 1;	
 	}
 
@@ -353,31 +542,50 @@ void UARTx_Process(void)
 	{
 		switch(res)
 		{
-			case '1' :
-				printf("set flag_process_1\r\n");		
-				set_flag(flag_process_1 ,ENABLE);
-				break;	
-			case '2' :	
-				printf("set flag_process_2\r\n");		
-				set_flag(flag_process_2 ,ENABLE);
-				break;	
-			case '3' :	
-				printf("set flag_process_3\r\n");		
-				set_flag(flag_process_3 ,ENABLE);
-				break;	
-			case '4' :	
-				printf("set flag_process_4\r\n");		
-				set_flag(flag_process_4 ,ENABLE);
+			case '?':
+				set_flag(flag_digit_q_mark , ENABLE);
+				break;
+		
+			case '1':
+				set_flag(flag_digit_1 , ENABLE);
 				break;	
 
+			case '2':
+				set_flag(flag_digit_2 , ENABLE);
+				break;
+
+			case '3':
+				set_flag(flag_digit_3 , ENABLE);			
+				break;
+
+			case '4':
+				set_flag(flag_digit_4 , ENABLE);
+				break;
+
+			case '5':
+				set_flag(flag_digit_5, ENABLE);				
+				break;				
+
+			case '6':
+				set_flag(flag_digit_6, ENABLE);
+				break;	
+
+			case '7':
+				set_flag(flag_digit_7, ENABLE);
+				break;
+
+			case '8':
+				set_flag(flag_digit_8, ENABLE);		
+				
+				break;		
+			
 			case 'X':
 			case 'x':
 			case 'Z':
 			case 'z':
 				NVIC_SystemReset();
 			
-				break;		
-			
+				break;			
 		}
 	}
 }

@@ -9,10 +9,15 @@ extern volatile uint32_t BitFlag;
 typedef enum{
 	flag_start = 0 ,
 
-	flag_process_1 ,
-	flag_process_2 ,
-	flag_process_3 ,
-	flag_process_4 ,
+	flag_digit_1 ,
+	flag_digit_2 ,
+	flag_digit_3 ,
+	flag_digit_4 ,
+	flag_digit_5 ,
+	flag_digit_6 ,
+	flag_digit_7 ,
+	flag_digit_8 ,
+	flag_digit_q_mark ,
 
 	flag_timer_period ,
 
@@ -31,8 +36,8 @@ typedef enum{
 
 #define TEST_NUMBER 								(16)   /* page numbers */
 
-//#define TEST_SPI_PAGE
-#define TEST_SPI_SECTOR
+#define TEST_SPI_PAGE
+// #define TEST_SPI_SECTOR
 
 #define SPI_FLASH_CLK_FREQ  						(200000)
 #define SPI_FLASH_PORT  							(SPI0)
